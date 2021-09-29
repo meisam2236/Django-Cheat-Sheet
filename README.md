@@ -18,6 +18,13 @@
       - [OneToMany or ManyToOne](#onetomany-or-manytoone)
       - [ManyToMany](#manytomany)
       - [On delete parameters](#on-delete-parameters)
+    - [User model](#user-model)
+      - [login](#login)
+      - [password change](#password-change)
+      - [logout](#logout)
+      - [Authentication](#authentication)
+      - [permission](#permission)
+    - [Custom User](#custom-user)
     - [Getting and manipulating models](#getting-and-manipulating-models)
       - [Object-Relational Mapping](#object-relational-mapping)
       - [Create object with model](#create-object-with-model)
@@ -75,6 +82,23 @@
   - [Admin](#admin)
     - [Object representation](#object-representation)
     - [Admin Personalization](#admin-personalization)
+      - [list_display](#list_display)
+      - [list_display_links](#list_display_links)
+      - [sortable_by](#sortable_by)
+      - [list_filter](#list_filter)
+      - [list_editable](#list_editable)
+      - [search_fields](#search_fields)
+      - [inlines](#inlines)
+      - [fields](#fields)
+      - [readonly_fields](#readonly_fields)
+      - [extra](#extra)
+      - [fieldsets](#fieldsets)
+      - [custom actions](#custom-actions)
+- [Django Rest Framework(DRF)](#django-rest-frameworkdrf)
+  - [Installation](#installation)
+  - [Views](#views-1)
+    - [Function Based View(FBV)](#function-based-viewfbv-1)
+    - [Class Based View(CBV)](#class-based-viewcbv-1)
 
 # Introduction
 ## Creating django project
@@ -198,6 +222,306 @@ class Post(models.Model):
 -   SET_DEFAULT: set default to it's objects
 -   SET(...): set this to it's objects
 -   DO_NOTHING: nothing happens
+### User model
+```python
+# models.py
+from django.db import models
+from django.contrib.auth.models import User
+
+class Profile(models.Model):
+    user = models.OneToOneField(User, on_delete=models.CASCADE)
+    phone_number = models.CharField(max_length=50, blank=True, null=True)
+    country = models.CharField(max_length=100)
+```
+```python
+# forms.py
+from django import forms
+from django.contrib.auth.forms import UserCreationForm
+from django.contrib.auth.models import User
+
+from .models import Profile
+
+class SignUpForm(UserCreationForm):
+    country = forms.CharField(max_length=100)
+
+    class Meta:
+        model = User
+        fields = ('username', 'country', 'password1', 'password2')
+
+    def save(self, commit=True):
+        user = super().save(commit=commit)
+        Profile.objects.create(user=user, country=self.data['country'])
+        return user
+```
+#### login
+```python
+from django.contrib.auth import authenticate, login as dj_login
+from django.http.response import HttpResponse
+from django.views.decorators.csrf import csrf_exempt
+
+@csrf_exempt
+def login(request):
+    if request.method == 'POST':
+        username = request.POST['username']
+        password = request.POST['password']
+
+        user = authenticate(request, username=username, password=password)
+        if user:
+            dj_login(request, user)
+            return HttpResponse('Login completed!')
+        return HttpResponse('Wrong password/username')
+
+    return HttpResponse('Please login with post method')
+```
+#### password change
+```python
+# views.py
+@csrf_exempt
+def change_password(request):
+    if request.method == 'POST':
+        if not request.user.is_authenticated:
+            return HttpResponse('Please login first')
+
+        old_password = request.POST['old_password']
+        new_password1 = request.POST['new_password1']
+        new_password2 = request.POST['new_password2']
+
+        if not request.user.check_password(old_password):
+            return HttpResponse('Wrong old password')
+
+        if new_password1 != new_password2:
+            return HttpResponse('Entered passwords are not identical')
+
+        request.user.set_password(new_password1)
+        request.user.save()
+
+        return HttpResponse('Password changed successfully!')
+
+    return HttpResponse('Only post method allowed')
+```
+#### logout
+```python
+from django.contrib.auth import logout as dj_logout
+from django.http.response import HttpResponse
+from django.views.decorators.csrf import csrf_exempt
+
+@csrf_exempt
+def logout(request):
+    if request.method == 'POST':
+        if not request.user.is_authenticated:
+            return HttpResponse('Please login first')
+
+        dj_logout(request)
+        return HttpResponse('Logout successfully')
+
+    return HttpResponse('Only post method allowed')
+```
+These methods are also available:
+[https://developer.mozilla.org/en-US/docs/Learn/Server-side/Django/Authentication](https://developer.mozilla.org/en-US/docs/Learn/Server-side/Django/Authentication)
+#### Authentication
+```python
+from django.contrib.auth.decorators import login_required
+
+def login_first(request):
+    return HttpResponse('Please login first')
+
+@csrf_exempt
+@login_required(login_url='/library/login-first/')
+def logout(request):
+    if request.method == 'POST':
+        dj_logout(request)
+        return HttpResponse('Logout successfully')
+
+    return HttpResponse('Only post method allowed')
+```
+#### permission
+**add**
+```python
+from django.contrib.auth.decorators import login_required, permission_required
+
+from .forms import SignUpForm, BookForm
+
+@permission_required('library.add_book', raise_exception=True)
+@login_required(login_url='/library/login-first/')
+@csrf_exempt
+def add_book(request):
+    if request.method == 'POST':
+        form = BookForm(request.POST)
+        if form.is_valid():
+            form.save()
+            return HttpResponse('Book added successfully')
+
+        return HttpResponse(f"{form.errors}")
+
+    return HttpResponse('Only post method allowed')
+```
+for granting permission using shell, visit this:
+[https://docs.djangoproject.com/en/3.0/topics/auth/default/#permissions-and-authorization](https://docs.djangoproject.com/en/3.0/topics/auth/default/#permissions-and-authorization)
+**change**
+```python
+# views.py
+from django.shortcuts import get_object_or_404
+from django.contrib.auth.decorators import login_required, permission_required
+
+from .forms import SignUpForm, BookForm
+from .models import Book
+
+@permission_required('library.change_book', raise_exception=True)
+@login_required(login_url='/library/login-first/')
+@csrf_exempt
+def change_book(request, book_id):
+    if request.method == 'POST':
+        book = get_object_or_404(Book, id=book_id)
+        form = BookForm(request.POST, instance=book)
+        if form.is_valid():
+            form.save()
+            return HttpResponse('Book information updated!')
+        return HttpResponse(f"{form.errors}")
+
+    return HttpResponse('Only post method allowed!')
+```
+```python
+# urls.py
+from library.views import change_book
+
+urlpatterns = [
+    # ... 
+    path('library/change-book/<int:book_id>/', change_book),
+]
+```
+**view**
+```python
+# views.py
+from django.shortcuts import get_object_or_404
+from django.contrib.auth.decorators import login_required, permission_required
+from django.forms.models import model_to_dict
+from django.views.decorators.csrf import csrf_exempt
+
+from .models import Book
+
+@permission_required('library.view_book', raise_exception=True)
+@login_required(login_url='/library/login-first/')
+@csrf_exempt
+def view_book(request, book_id):
+    if request.method == 'GET':
+        book = get_object_or_404(Book, id=book_id)
+        return HttpResponse(f"{model_to_dict(book)}")
+    return HttpResponse('Only get method allowed!')
+```
+```python
+# urls.py
+from library.views import view_book
+
+urlpatterns = [
+    # ... 
+    path('library/view-book/<int:book_id>/', view_book),
+]
+```
+**delete**
+```python
+# views.py
+@permission_required('library.delete_book', raise_exception=True)
+@login_required(login_url='/library/login-first/')
+@csrf_exempt
+def delete_book(request, book_id):
+    if request.method == 'DELETE':
+        book = get_object_or_404(Book, id=book_id)
+        book.delete()
+        return HttpResponse('Book deleted successfully!')
+    return HttpResponse('Only delete method allowed!')
+```
+```python
+# urls.py
+from library.views import delete_book
+
+urlpatterns = [
+    # ... 
+    path('library/delete-book/<int:book_id>/', delete_book),
+]
+```
+**custom permissions**
+```python
+# models.py
+class Book(models.Model):
+    title = models.CharField(max_length=200)
+    publish_date = models.DateField()
+    pages_count = models.IntegerField()
+    author = models.ForeignKey(
+        Author, related_name='books', on_delete=models.CASCADE
+    )
+    hidden = models.BooleanField(default=False)
+
+    class Meta:
+        permissions = [
+            ("hide_book", "Can make book hidden"),
+        ]
+
+    def __str__(self):
+        return self.title
+```
+### Custom User
+```python
+from django.db import models
+from django.contrib.auth.models import AbstractUser
+
+class CustomUser(AbstractUser):
+    email = models.EmailField(unique=True)
+    country = models.CharField(max_length=100)
+    phone_number = models.CharField(max_length=50, blank=True, null=True)
+```
+Now you should replace this user with the default; So in the [settings.py](http://settings.py) add this:
+```python
+AUTH_USER_MODEL = 'library.CustomUser'
+```
+Now change the admin file:
+```python
+from django.contrib import admin
+from django.contrib.auth.admin import UserAdmin as DefaultUserAdmin
+
+from .models import CustomUser
+
+@admin.register(CustomUser)
+class UserAdmin(DefaultUserAdmin):
+    fieldsets = (
+        (None, {'fields': ('username', 'password')}),
+        ('Personal info', {
+            'fields': (
+                'first_name',
+                'last_name',
+                'email',
+                'phone_number',
+                'country'
+            )
+        }),
+        ('Permissions', {
+            'fields': (
+                'is_active',
+                'is_staff',
+                'is_superuser',
+                'groups',
+                'user_permissions'
+            ),
+        }),
+        ('Important dates', {'fields': ('last_login', 'date_joined')}),
+    )
+
+    list_display = (
+        'username',
+        'email',
+        'first_name',
+        'last_name',
+        'phone_number',
+        'is_staff',
+    )
+
+    search_fields = (
+        'username',
+        'first_name',
+        'last_name',
+        'phone_number',
+        'email',
+    )
+```
 ### Getting and manipulating models
 #### Object-Relational Mapping
 ORM will map your code to database query! So you won't need to write query codes!
@@ -1111,4 +1435,222 @@ class Book(models.Model):
         return self.title
 ```
 ### Admin Personalization
+#### list_display
+```python
+from django.contrib import admin
+from .models import Author, Book
 
+@admin.register(Author)
+class AuthorAdmin(admin.ModelAdmin):
+    list_display = ['id', 'first_name', 'last_name', 'birth_date', 'country']
+
+@admin.register(Book)
+class BookAdmin(admin.ModelAdmin):
+    list_display = ['id', 'title', 'publish_date', 'pages_count']
+```
+#### list_display_links
+```python
+from django.contrib import admin
+from .models import Author, Book
+
+@admin.register(Author)
+class AuthorAdmin(admin.ModelAdmin):
+    list_display = ['id', 'first_name', 'last_name', 'birth_date', 'country']
+		list_display_links = ['id', 'first_name']
+
+@admin.register(Book)
+class BookAdmin(admin.ModelAdmin):
+    list_display = ['id', 'title', 'publish_date', 'pages_count']
+```
+**Another way:**
+```python
+from django.contrib import admin
+from django.utils.html import mark_safe
+from .models import Product 
+
+@admin.register(Product)
+class ProductAdmin(admin.ModelAdmin):
+    list_filter = ['category', 'company']
+    sortable_by = ['price']
+    def name_link(self):
+        return mark_safe(f'<a href="{self.id}">{self.name}</a>')
+    name_link.short_description = 'name'
+    list_display = ['id', name_link, 'category', 'company', 'price']
+```
+#### sortable_by
+```python
+@admin.register(Author)
+class AuthorAdmin(admin.ModelAdmin):
+    # previous codes
+    # ....
+    sortable_by = ['first_name', 'last_name']
+```
+#### list_filter
+```python
+@admin.register(Author)
+class AuthorAdmin(admin.ModelAdmin):
+    # previous codes
+    # ...
+    list_filter = ['country']
+```
+#### list_editable
+```python
+@admin.register(Author)
+class AuthorAdmin(admin.ModelAdmin):
+    # previous codes
+    # ...
+    list_editable = ['country']
+```
+#### search_fields
+```python
+@admin.register(Author)
+class AuthorAdmin(admin.ModelAdmin):
+    # previous codes
+    # ...
+    search_fields = ['first_name']
+```
+#### inlines
+**StackedInline**
+```python
+class BookInline(admin.StackedInline):
+    model = Book
+
+@admin.register(Author)
+class AuthorAdmin(admin.ModelAdmin):
+    # previous codes
+    # ...
+    inlines = [BookInline]
+```
+**TabularInline**
+```python
+class ProductTabularInline(admin.TabularInline):
+    model = Product
+
+@admin.register(Company)
+class CompanyAdmin(admin.ModelAdmin):
+    inlines = [ProductTabularInline]
+```
+#### fields
+```python
+@admin.register(Author)
+class AuthorAdmin(admin.Model):
+    # previous codes
+    # ...
+    fields = [('first_name', 'last_name'), 'country']
+```
+#### readonly_fields
+```python
+@admin.register(Author)
+class AuthorAdmin(admin.Model):
+    # previous codes
+    # ...
+    readonly_fields = ['country']
+```
+#### extra
+Delete empty fields
+```python
+from django.contrib import admin
+from .models import Company
+
+class ProductTabularInline(admin.TabularInline):
+    model = Product
+    extra = 0
+
+@admin.register(Company)
+class CompanyAdmin(admin.ModelAdmin):
+    inlines = [ProductTabularInline]
+```
+#### fieldsets
+```python
+@admin.register(Book)
+class BookAdmin(admin.ModelAdmin):
+    fieldsets = (
+        ('General Info', {
+            'fields': ('title', 'publish_date')
+        }),
+        ('Details', {
+            'classes': ('collapse',),
+            'fields': ('pages_count', 'author', 'price')
+        }),
+    )
+```
+#### custom actions
+```python
+from django.contrib import admin, messages
+from django.db.models import F
+from .models import Book, Author
+
+@admin.register(Book)
+class BookAdmin(admin.ModelAdmin):
+    # previous codes
+    # ...
+
+    actions = ['add_pages']
+
+    def add_pages(self, request, queryset):
+        updated = queryset.update(pages_count=F('pages_count') + 2)
+        self.message_user(
+            request, f"{updated} books pages added with two", messages.SUCCESS
+        )
+
+    add_pages.short_description = 'Add two page to selected books'
+```
+# Django Rest Framework(DRF)
+## Installation
+```bash
+>>> pip install djangorestframework
+```
+add 'rest_framework' to INSTALLED_APPS:
+```python
+INSTALLED_APPS = [
+    # Previous apps 
+    # ...
+    'rest_framework',
+]
+```
+## Views
+### Function Based View(FBV)
+```python
+from rest_framework.decorators import api_view
+from rest_framework.response import Response
+
+@api_view(['GET', 'POST'])
+def hello(request):
+
+    if request.method == 'GET':
+        return Response({"message": "Hello GET!!!"})
+    return Response({"message": "Hello POST!!!"})
+```
+### Class Based View(CBV)
+```python
+from rest_framework.views import APIView
+from rest_framework.response import Response
+
+class HelloAPIView(APIView):
+    def get(self, request):
+        return Response({"message": "Hello GET!!!"})
+
+    def post(self, request):
+        return Response({"message": "Hello POST!!!"})
+```
+And if you want to authenticate user:
+
+```python
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework.permissions import IsAuthenticated
+
+class ByeAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        return Response({"message": "Bye!!!"})
+```
+**Other views**
+-   CreateAPIView
+-   UpdateAPIView
+-   DestroyAPIView
+-   RetrievAPIView
+-   GenericAPIView
+For more detail check this:
+[http://www.cdrf.co/](http://www.cdrf.co/)
