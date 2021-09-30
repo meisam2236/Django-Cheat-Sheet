@@ -106,7 +106,12 @@
     - [Login](#login-1)
     - [Logout](#logout-1)
   - [Permissions](#permissions)
-  - [CORS](#cors)
+    - [Famouse built-in permission](#famouse-built-in-permission)
+    - [Types of permissions](#types-of-permissions)
+      - [has_permission](#has_permission)
+      - [has_object_permission](#has_object_permission)
+  - [CORS(Cross-Origin Resource Sharing)](#corscross-origin-resource-sharing)
+    - [corsheaders](#corsheaders)
 
 # Introduction
 ## Creating django project
@@ -1844,5 +1849,108 @@ class LogoutAPIView(GenericAPIView):
         return Response(data={'message': f"Bye {request.user.username}!"})
 ```
 ## Permissions
+### Famouse built-in permission
+**IsAdminUser**
+**IsAuthenticated**
+**IsAuthenticatedOrReadOnly**
+**AllowAny**
+**DjangoModelPermissions**
+### Types of permissions
+#### has_permission
+```python
+from rest_framework.permissions import BasePermission
+from security.models import Blacklist
 
-## CORS
+
+class Blacklisted(BasePermission):
+
+    def has_permission(self, request, view):
+        ip_address = request.META['REMOTE_ADDR']
+        in_blacklist = Blacklist.objects.filter(ip=ip_address).exists()
+
+        return not in_blacklist
+```
+#### has_object_permission
+```python
+from rest_framework.permissions import BasePermission, SAFE_METHODS
+
+# SAFE_METHODS = ['GET', 'HEAD', 'OPTIONS']
+
+class IsAuthorOrReadOnly(BasePermission):
+
+    def has_object_permission(self, request, view, obj):
+
+        if request.method in SAFE_METHODS:
+            return True
+
+        return obj.author == request.user  
+```
+DRF checks has_permission automatically, but for checking has_object_permission, we should call it:
+```python
+from rest_framework.generics import GenericAPIView, get_object_or_404
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+
+from .models import Article
+from .permissions import IsAuthorOrReadOnly, Blacklisted
+from .serializers import ArticleSerializer
+
+
+class ArticleAPIView(GenericAPIView):
+
+    permission_classes = (IsAuthenticated, IsAuthorOrReadOnly, Blacklisted)
+    serializer_class = ArticleSerializer
+
+    def get(self, request, article_id):
+        article = get_object_or_404(Article, id=article_id)
+
+        data = self.get_serializer(article).data
+
+        return Response(data={'article': data})
+
+    def put(self, request, article_id):
+        article = get_object_or_404(Article, id=article_id)
+        self.check_object_permissions(request, article)
+
+        # Do some changes on article
+        # ...
+
+        return Response(data={'message': 'Updated!'))
+```
+`self.check_object_permissions(request, article)` is calling that!
+## CORS(Cross-Origin Resource Sharing)
+Origin includes protocol(http, https, ...), host(localhost, ...) and a port number(8000, ...). Cross-Origin means a request outside of an origin.
+### corsheaders
+```
+pip install django-cors-headers
+```
+Add it in INSTALLED_APPS:
+```python
+INSTALLED_APPS = [
+    ...
+    'corsheaders',
+    ...
+]
+```
+Add the CorsMiddleware before CommonMiddleware:
+```python
+MIDDLEWARE = [
+    ...
+    'corsheaders.middleware.CorsMiddleware',
+    'django.middleware.common.CommonMiddleware',
+    ...
+]
+```
+Now you can customize CORS allowed origins.
+**To allow all requests:**
+```python
+CORS_ALLOW_ALL_ORIGINS = True
+```
+**To allow custom requests:**
+```python
+CORS_ALLOWED_ORIGINS = [
+    "https://frontend-app.ir",
+    "http://localhost:8000",
+    "http://127.0.0.1:8000",
+]
+```
