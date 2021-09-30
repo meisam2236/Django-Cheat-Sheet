@@ -99,6 +99,14 @@
   - [Views](#views-1)
     - [Function Based View(FBV)](#function-based-viewfbv-1)
     - [Class Based View(CBV)](#class-based-viewcbv-1)
+  - [Serializers](#serializers)
+    - [Serializer Class](#serializer-class)
+    - [ModelSerializer Class](#modelserializer-class)
+  - [Authentication with Token](#authentication-with-token)
+    - [Login](#login-1)
+    - [Logout](#logout-1)
+  - [Permissions](#permissions)
+  - [CORS](#cors)
 
 # Introduction
 ## Creating django project
@@ -1654,3 +1662,187 @@ class ByeAPIView(APIView):
 -   GenericAPIView
 For more detail check this:
 [http://www.cdrf.co/](http://www.cdrf.co/)
+## Serializers
+### Serializer Class
+It's like Form but for api:
+```python
+from rest_framework import serializers
+from .models import Car
+
+
+class CarSerializer(serializers.Serializer):
+    name = serializers.CharField(max_length=100)
+    minimum_price = serializers.IntegerField()
+    maximum_price = serializers.IntegerField()
+    country = serializers.CharField(max_length=100)
+
+    def validate(self, data):
+        if data.get('minimum_price', 0) > data.get('maximum_price', 0):
+            error = 'Maximum should be greater than minimum'
+            raise serializers.ValidationError(error)
+
+        return data
+
+    def create(self, validated_data):
+        car = Car.objects.create(**validated_data)
+        return car
+
+    def update(self, instance, validated_data):
+        instance.name = validated_data.get(
+            'name', instance.name
+        )
+        instance.minimum_price = validated_data.get(
+            'minimum_price', instance.minimum_price
+        )
+        instance.maximum_price = validated_data.get(
+            'maximum_price', instance.maximum_price
+        )
+        instance.country = validated_data.get(
+            'country', instance.country
+        )
+
+        instance.save()
+        return instance  
+```
+You can also validate each object individually:
+```python
+# serilizers.py
+from rest_framework import serializers
+from .models import Car
+
+
+class CarSerializer(serializers.Serializer):    
+    # previous codes
+    # ...
+    def validate_minimum_price(self ,value):
+        if value < 0 :
+            raise serializers.ValidationError('Minimum price must be postive')
+
+        return value 
+```
+```python
+# views.py
+from rest_framework.response import Response
+from rest_framework.views import APIView
+from rest_framework.generics import get_object_or_404
+
+from .serializers import CarSerializer
+from .models import Car
+
+
+class AddCarAPIView(APIView):
+    def post(self, request):
+        car_serializer = CarSerializer(data=request.data)
+        if car_serializer.is_valid():
+            car_serializer.save()
+            return Response({'message': 'Car added successfully!'})
+
+        return Response({'message': car_serializer.errors})
+
+
+class CarAPIView(APIView):
+    def get(self, request, car_id):
+        car = get_object_or_404(Car, id=car_id)
+        car_serializer = CarSerializer(instance=car)
+        data = car_serializer.data
+        return Response({'car': data})
+
+    def put(self, request, car_id):
+        car = get_object_or_404(Car, id=car_id)
+        car_serializer = CarSerializer(
+            instance=car, 
+            data=request.data, 
+            partial=True
+        )
+
+        if car_serializer.is_valid():
+            car_serializer.save()
+            return Response({'message': 'Car updated successfully!'})
+
+        return Response({'message': car_serializer.errors})
+```
+### ModelSerializer Class
+It's like ModelForm but for api:
+```python
+# serializers.py
+from rest_framework import serializers
+from .models import Car
+
+
+class CarSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Car
+        fields = ('name', 'minimum_price', 'maximum_price', 'country')
+
+    def validate(self, data):
+        if data.get('minimum_price', 0) > data.get('maximum_price', 0):
+            error = 'Maximum should be greater than minimum'
+            raise serializers.ValidationError(error)
+
+        return data
+
+    def validate_minimum_price(self ,value):
+        if value < 0 :
+            raise serializers.ValidationError('Minimum price must be postive')
+
+        return value
+```
+## Authentication with Token
+Add this to your settings.py:
+```python
+REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': [
+        'rest_framework.authentication.TokenAuthentication',
+    ],
+}
+```
+And add this to INSTALLED_APPS:
+```python
+INSTALLED_APPS = [
+    # Other apps
+    'rest_framework.authtoken',
+]
+```
+Now migrate your project:
+```
+python manage.py migrate
+```
+### Login
+Now in urls.py use this(default drf view):
+```python
+from django.urls import path
+from rest_framework.authtoken.views import obtain_auth_token
+
+urlpatterns = [
+    # Other urls
+    path('login/', view=obtain_auth_token),
+]
+```
+Now if you request with username and password, you get token.
+Now you can add limitations to a view:
+```python
+from rest_framework.response import Response
+from rest_framework.generics import GenericAPIView
+from rest_framework.permissions import IsAuthenticated
+
+
+class HelloAPIView(GenericAPIView):
+    permission_classes = (IsAuthenticated, )
+
+    def get(self, request):
+        return Response(data={'message': f"Hello {request.user.username}!"})
+```
+Now if you don't prepare token, You can't access the view(token in header).
+### Logout
+```python
+class LogoutAPIView(GenericAPIView):
+
+    permission_classes = (IsAuthenticated, )
+
+    def post(self, request):
+        request.user.auth_token.delete()
+        return Response(data={'message': f"Bye {request.user.username}!"})
+```
+## Permissions
+
+## CORS
