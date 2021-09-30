@@ -112,6 +112,9 @@
       - [has_object_permission](#has_object_permission)
   - [CORS(Cross-Origin Resource Sharing)](#corscross-origin-resource-sharing)
     - [corsheaders](#corsheaders)
+- [Testing](#testing)
+  - [Model Testing](#model-testing)
+  - [View Testing](#view-testing)
 
 # Introduction
 ## Creating django project
@@ -1954,3 +1957,57 @@ CORS_ALLOWED_ORIGINS = [
     "http://127.0.0.1:8000",
 ]
 ```
+# Testing
+Create a tests folder in your app and create your test files in it(They should start with test).
+Django uses python unit testing. So you can read them in [https://docs.python.org/3/library/unittest.html#assert-methods](https://docs.python.org/3/library/unittest.html#assert-methods).
+Also read [https://docs.djangoproject.com/en/dev/topics/testing/tools/#assertions](https://docs.djangoproject.com/en/dev/topics/testing/tools/#assertions).
+## Model Testing
+Assume we have this model:
+```python
+from django.db import models
+import datetime
+
+class Person(models.Model):    
+    first_name = models.CharField(max_length=100)
+    last_name = models.CharField(max_length=100)
+    birth_date = models.DateField()
+
+    def is_young(self):        
+        return self.birth_date > datetime.date(1990, 1, 1)
+
+    def is_old(self):
+        return self.birth_date < datetime.date(1960, 1, 1)
+
+    def __str__(self):
+        return self.first_name
+```
+We can test it:
+```python
+from django.test import TestCase
+from app.models import Person
+import datetime
+
+class PersonTests(TestCase):
+    def setUp(self):
+        Person.objects.create(first_name='Ali', last_name='Taghipour', birth_date=datetime.date(2000, 4, 12))
+        Person.objects.create(first_name='Maryam', last_name='Noori', birth_date=datetime.date(1956, 11, 10))    
+
+    def test_is_young(self):        
+        ali = Person.objects.get(first_name='Ali')        
+        maryam = Person.objects.get(first_name='Maryam')        
+        self.assertTrue(ali.is_young())        
+        self.assertFalse(maryam.is_young())    
+
+    def test_is_old(self):        
+        ali = Person.objects.get(first_name='Ali')        
+        maryam = Person.objects.get(first_name='Maryam')        
+        self.assertFalse(ali.is_old())        
+        self.assertTrue(maryam.is_old())
+
+    def test_str(self):
+        ali = Person.objects.get(first_name='Ali')
+        maryam = Person.objects.get(first_name='Maryam')
+        self.assertEqual(ali.__str__(), 'Ali')
+        self.assertEqual(maryam.__str__(), 'Maryam')
+```
+## View Testing
