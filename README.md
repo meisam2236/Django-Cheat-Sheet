@@ -115,6 +115,14 @@
 - [Testing](#testing)
   - [Model Testing](#model-testing)
   - [View Testing](#view-testing)
+    - [Testing API](#testing-api)
+  - [Test Coverage](#test-coverage)
+    - [Installation](#installation-1)
+    - [Run the Coverage](#run-the-coverage)
+    - [Result of Coverage](#result-of-coverage)
+      - [Terminal](#terminal)
+      - [HTML](#html)
+  - [Fixtures](#fixtures)
 
 # Introduction
 ## Creating django project
@@ -2011,3 +2019,119 @@ class PersonTests(TestCase):
         self.assertEqual(maryam.__str__(), 'Maryam')
 ```
 ## View Testing
+```python
+from django.test import TestCase
+
+
+class ViewTests(TestCase):
+    def test_login(self):
+        data = {'username': 'ali', 'password': '1375'}
+        response = self.client.post('/login/', data=data)
+        self.assertEqual(response.status_code, 200)
+
+    def test_homepage(self):
+        response = self.client.get('/homepage/')
+        self.assertTrue(b'Welcome to the Homepage' in response.content)
+```
+```python
+from django.test import TestCase
+
+
+class ViewTests(TestCase):
+    def test_string_welcome(self):
+        response = self.client.get('/string_welcome/')
+        string_data = response.content.decode('utf-8')
+        self.assertEqual('welcome to quera', string_data)
+```
+### Testing API
+```python
+from django.test import TestCase
+
+
+class ViewTests(TestCase):
+    def test_welcome(self):
+        response = self.client.get('/welcome/')
+        data = response.json()
+        self.assertEqual(data.get('message'), 'welcome to quera')
+```
+## Test Coverage
+### Installation
+```
+pip install coverage
+```
+### Run the Coverage
+```
+coverage run --source='.' manage.py test app_name
+```
+### Result of Coverage
+#### Terminal
+```
+coverage report
+```
+#### HTML
+```
+coverage html
+```
+## Fixtures
+First create a folder called fixtures in your app. Then make a JSON, XML or YAML for the data:
+```json
+[
+	{
+		"model": "library_management.person",
+		"pk": 1,
+		"fields": {
+			"first_name": "Abbas",
+			"last_name": "Azizi",
+			"birth_date": "1996-06-13"
+		}
+	},
+	{
+		"model": "library_management.person",
+		"pk": 2,
+		"fields": {
+			"first_name": "Nazanin",
+			"last_name": "Aliabadi",
+			"birth_date": "1950-02-05"
+		}
+	}
+]
+```
+for reffering to the model, you should use app_name and the model name.
+PK stands for primary key. It used for reffering to forieng keys and stuff.
+Now you can import your fixture:
+```python
+class PersonTests(TestCase):    
+
+    fixtures = ['person.json']    
+
+    def setUp(self):
+        Person.objects.create(first_name='Ali', last_name='Taghipour', birth_date=datetime.date(2000, 4, 12))
+        Person.objects.create(first_name='Maryam', last_name='Noori', birth_date=datetime.date(1956, 11, 10))    
+
+    def test_is_young(self):        
+        ali = Person.objects.get(first_name='Abbas')        
+        maryam = Person.objects.get(first_name='Maryam')        
+        self.assertTrue(ali.is_young())        
+        self.assertFalse(maryam.is_young())    
+
+    def test_is_old(self):        
+        ali = Person.objects.get(first_name='Ali')        
+        maryam = Person.objects.get(first_name='Nazanin')        
+        self.assertFalse(ali.is_old())        
+        self.assertTrue(maryam.is_old())
+```
+You can also use fixtures to import in your main database:
+```bash
+python manage.py loaddata "Fixture Name"
+```
+Also you can make a fixture with your present database:
+```bash
+python manage.py dumpdata > "Fixture Name"
+```
+You can also make a fixture with parts of your django app:
+```bash
+python manage.py dumpdata "Table Name" > "Fixture Name"
+```
+```bash
+python manage.py dumpdata "Django App" > "Fixture Name"
+```
