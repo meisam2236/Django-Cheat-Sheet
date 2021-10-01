@@ -123,6 +123,8 @@
       - [Terminal](#terminal)
       - [HTML](#html)
   - [Fixtures](#fixtures)
+  - [Django Debug Toolbar](#django-debug-toolbar)
+    - [Installation](#installation-2)
 
 # Introduction
 ## Creating django project
@@ -2134,4 +2136,40 @@ python manage.py dumpdata "Table Name" > "Fixture Name"
 ```
 ```bash
 python manage.py dumpdata "Django App" > "Fixture Name"
+```
+## Django Debug Toolbar
+### Installation
+```shell
+pip install django-debug-toolbar
+```
+Add this to your INSTALLED_APPS:
+```python
+INSTALLED_APPS = [
+    # ...
+    'debug_toolbar',
+]
+```
+Add this to your main urls.py:
+```python
+import debug_toolbar
+from django.urls import include, path
+# Other Imports
+
+urlpatterns = [
+    # ...
+    path('__debug__/', include(debug_toolbar.urls)),
+]
+```
+Add this to your first line MIDDLEWARE:
+```python
+MIDDLEWARE = [
+    'debug_toolbar.middleware.DebugToolbarMiddleware',
+    # ...
+]
+```
+Add this at the end of the settings.py:
+```python
+INTERNAL_IPS = [
+    '127.0.0.1',
+]
 ```
