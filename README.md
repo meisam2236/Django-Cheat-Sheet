@@ -79,6 +79,7 @@
       - [Turning form to object](#turning-form-to-object)
     - [Form in template](#form-in-template)
     - [ModelForm](#modelform)
+  - [Sending image to forms](#sending-image-to-forms)
   - [Admin](#admin)
     - [Object representation](#object-representation)
     - [Admin Personalization](#admin-personalization)
@@ -125,6 +126,16 @@
   - [Fixtures](#fixtures)
   - [Django Debug Toolbar](#django-debug-toolbar)
     - [Installation](#installation-2)
+- [Async](#async)
+  - [Async in views](#async-in-views)
+  - [sync in async](#sync-in-async)
+  - [async in sync](#async-in-sync)
+- [Middleware](#middleware)
+  - [Function-based Implementation](#function-based-implementation)
+  - [Class-based Implementation](#class-based-implementation)
+  - [Middleware usage](#middleware-usage)
+  - [Another example](#another-example)
+- [Further Readings](#further-readings)
 
 # Introduction
 ## Creating django project
@@ -134,6 +145,10 @@ django-admin startproject mysite
 ## Create database
 ```python 
 python manage.py migrate
+```
+Further to remove all data in the database use this:
+```
+django-admin flush
 ```
 ## Run django project
 ```
@@ -157,13 +172,28 @@ INSTALLED_APPS = [
 ]
 ```
 ## Creating super user
-```python
+```
 python manage.py createsuperuser
 ```
 To get changes in database and create things, run this:
-```python
+```
 python manage.py makemigrations first_app
+```
+This will make translate python codes model to SQL. The files stored in the app folder. You can see the SQLs:
+```
+python manage.py sqlmigrate app_label migration_name
+```
+Now you can use those SQLs:
+```
 python manage.py migrate
+```
+To see the migrations:
+```
+python manage.py showmigrations
+```
+To change user's password:
+```
+django-admin changepassword <username>
 ```
 # MVC Architect
 ## Models
@@ -1336,7 +1366,7 @@ class SignUpForm(forms.Form):
 from django.shortcuts import render
 
 def add_book(request):
-    if request.method() == "GET":
+    if request.method == "GET":
         form = BookForm()
         return render(request, 'example.html', {'form': form})
 ```
@@ -1419,6 +1449,40 @@ def sign_up(request):
         form = SignUpForm(request.POST)
         if form.is_valid():
             book = form.save()
+```
+## Sending image to forms
+```python
+# forms.py
+from django import forms
+
+class UploadFileForm(forms.Form):
+	 file_name = forms.CharField(min_length=3, max_length=30)
+	 file = forms.FileField()
+```
+```python
+views.py
+import aiofiles
+from django.shortcuts import render
+from .forms import UploadFileForm
+
+async def handle_uploaded_file(file):
+	 """awaitable function to upload a file and put it in media folder"""
+	 async with aiofiles.open(f"media/{file.name}", "wb+") as destination:
+		 for chunk in file.chunks():
+			 await destination.write(chunk)
+
+  
+async def upload(request):
+	 if request.method == 'GET':
+		 form = UploadFileForm()
+		 return render(request, 'upload.html', {'form': form})
+	 elif request.method == 'POST':
+		 form = UploadFileForm(data=request.POST, files=request.FILES)
+		 if form.is_valid():
+			 file_name = form.cleaned_data['file_name']
+			 file = request.FILES['file']
+			 await handle_uploaded_file(file)
+			 return render(request, 'upload.html', {'form': form, 'success': 'Successfully uploaded!'})
 ```
 ## Admin
 Add models inside your app in admin.py
@@ -2173,3 +2237,153 @@ INTERNAL_IPS = [
     '127.0.0.1',
 ]
 ```
+# Async
+## Async in views
+```python
+# django 3.1
+from django.http import HttpResponse
+
+async def index(request):
+    for movie in list_of_movies:
+        await download(some_movie_link)
+    return HttpResponse('Movies are downloaded ;)')
+```
+## sync in async
+To use sync code in async function without losing async functionality, we should use a decorator called sync_to_async:
+```python
+from django.http import HttpResponse
+from asgiref.sync import sync_to_async
+from .models import Book
+
+@sync_to_async
+def get_book(name):
+    return Book.objects.get(name=name)
+
+async def get_author(request, name):
+    book = await get_book(name=name)
+
+    return HttpResponse(f'author: {book.author}')
+```
+You can also write it using this way:
+```python
+from django.http import HttpResponse
+from asgiref.sync import sync_to_async
+from .models import Book
+
+async def get_author(request, name):
+    # multi-line
+    get_book = sync_to_async(Book.objects.get)
+    book = await get_book(name=name)
+
+    # one-line
+    book = await sync_to_async(Book.objects.get)(name=name)
+
+    return HttpResponse(f'author: {book.author}')
+```
+## async in sync
+To use async in sync functions, we can use another decorator called async_to_sync:
+```python
+from asgiref.sync import async_to_sync
+
+@async_to_sync
+async def hello_message(name):
+    await asyncio.sleep(3)
+    return f'Welcome to Quera, {name}'
+
+def main():
+    msg = hello_message('Mohammad')
+    print(msg)
+```
+# Middleware
+Middleware is a python class that exist in request/response life cycle. It gives us the ability to do proccessing things before arriving request to view or response to the user on request and response objects.
+## Function-based Implementation
+```python
+from django.http.response import HttpResponseForbidden
+
+
+def get_client_ip(request):
+    x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
+    if x_forwarded_for:
+        ip = x_forwarded_for.split(',')[0]
+    else:
+        ip = request.META.get('REMOTE_ADDR')
+    return ip
+
+
+def blacklist_middleware(get_response):
+    def middleware(request):
+        client_ip = get_client_ip(request)
+        if client_ip in blacklist:
+            return HttpResponseForbidden()
+
+        response = get_response(request)
+        return response
+
+    return middleware
+```
+## Class-based Implementation
+```python
+from django.http.response import HttpResponseForbidden
+
+
+class BlacklistMiddleware:
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+	
+	def get_client_ip(request):
+    	x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
+    	if x_forwarded_for:
+        	ip = x_forwarded_for.split(',')[0]
+    	else:
+        	ip = request.META.get('REMOTE_ADDR')
+    	return ip
+	
+    def __call__(self, request):
+        client_ip = get_client_ip(request)
+        if client_ip in blacklist:
+            return HttpResponseForbidden()
+
+        response = self.get_response(request)
+        return response
+```
+## Middleware usage
+In order to use the middleware, you have to add it in django settings:
+```python
+MIDDLEWARE = [
+    'django.middleware.security.SecurityMiddleware',
+    'django.contrib.sessions.middleware.SessionMiddleware',
+    'my_project.middleware.BlacklistMiddelware',
+    'my_project.middleware.blacklist_middleware',
+    ...,
+    'django.middleware.locale.LocaleMiddleware'
+]
+```
+## Another example
+Assume we want to send profile to the request beside user:
+```
+# middlewares.py
+from accounts.models import Profile
+
+  
+class ProfileMiddleware:
+	def __init__(self, get_response):
+		self.get_response = get_response
+
+	def __call__(self, request):
+		if hasattr(request, 'user') and request.user.is_authenticated:
+			try:
+				profile = Profile.objects.get(user=request.user)
+			except Profile.DoesNotExist:
+				profile = None 
+
+			request.profile = profile
+  
+
+		response = self.get_response(request)
+		return response
+```
+# Further Readings
+https://docs.djangoproject.com/en/3.2/topics/pagination/
+https://docs.djangoproject.com/en/3.2/ref/contrib/staticfiles/
+https://docs.djangoproject.com/en/3.2/howto/deployment/
