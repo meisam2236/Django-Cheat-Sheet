@@ -150,6 +150,14 @@
       - [WSGI or ASGI](#wsgi-or-asgi)
       - [Gunicorn](#gunicorn)
     - [The Project](#the-project)
+  - [Create API using GraphQL](#create-api-using-graphql)
+    - [Installation](#installation-3)
+    - [Usage](#usage)
+  - [Database Manger Systems](#database-manger-systems)
+    - [Installation](#installation-4)
+  - [Caching with Memcached(memory-based cached)](#caching-with-memcachedmemory-based-cached)
+    - [Installation](#installation-5)
+    - [Running](#running)
   - [Deployment Checklist](#deployment-checklist)
 - [Further Readings](#further-readings)
 
@@ -2554,6 +2562,148 @@ gunicorn myproject.wsgi
 Before running the project, make sure you change the `ALLOWED_HOSTS` in settings.py to all:
 ```python
 ALLOWED_HOSTS = ['*']
+```
+## Create API using GraphQL
+### Installation
+```bash
+pip install graphene-django
+```
+Then add `graphene_django` to the `INSTALLED_APPS` in settings.py and at the end of settings.py, add this:
+```python
+GRAPHENE = {
+  'SCHEMA': 'graphql_api.schema.schema'
+}
+```
+### Usage
+Now in the graphql_api/schema directory, add these:
+```python
+# __init__.py 
+
+__all__ = ['schema']
+from .schema import schema
+```
+```python
+# qraphql_api/schema/schema.py
+
+import graphene
+from .query import Query
+
+schema = graphene.Schema(query=Query)
+```
+```python
+# graphql_api/schema/query.py
+
+import graphene
+
+class Query(graphene.ObjectType):
+    hello = graphene.String()
+
+    def resolve_hello(self, info):
+        return 'world'
+```
+Now we need to add a url in urls to access GraphQL API:
+```python
+# api/query.py
+
+from django.contrib import admin
+from django.urls import path
+from graphene_django.views import GraphQLView
+
+urlpatterns = [
+    path('admin/', admin.site.urls),
+    path('graphql', GraphQLView.as_view(graphiql = True)),
+]
+```
+Visit this: [localhost:8000/graphql](localhost:8000/graphql)
+**Query:**
+```
+query {
+    hello
+}
+```
+**Response:**
+```
+{
+    "data": {
+        "hello": "world"
+    }
+}
+```
+If you want to have a file output:
+```bash
+python3 manage.py qraphql_schema --out schema.graphql
+```
+## Database Manger Systems
+- **SQLite**: default dbms, not suitable for production use.
+- **PostgreSQL**: Good choice for production.
+- **MySQL**: Alternative good choice for production.
+- **MariaDB**
+- **Oracle**
+### Installation
+For installing PostgreSQL:
+```bash
+pip install psycopg2
+```
+For installing MySQL:
+```bash
+pip install mysqlclient
+```
+Then in settings.py, modify the `DATABASES`.
+For PostgreSQL:
+```bash
+DATABASES = {
+  'default': {
+      'ENGINE': 'django.db.backends.postgresql_psycopg2',
+      'NAME': '<db_name>',
+      'HOST': 'localhost',
+      'USER': '<db_username>',
+      'PASSWORD': '<password>',
+      'PORT': '<db_port>',
+  }
+}
+```
+For MySQL:
+```bash
+DATABASES = {
+  'default': {
+      'ENGINE': 'django.db.backends.mysql',
+      'NAME': '<db_name>',
+      'HOST': 'localhost',
+      'USER': '<db_username>',
+      'PASSWORD': '<password>',
+      'PORT': '<db_port>',
+  }
+}
+```
+## Caching with Memcached(memory-based cached)
+### Installation
+```
+pip install python-memchached
+```
+Add this to settings.py:
+```python
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.memcached.MemcachedCache',
+        'LOCATION': '127.0.0.1:11211',
+    }
+}
+```
+Now we should install memcached in the system:
+```shell
+# linux
+$ apt-get install memcached
+$ yum install memcached
+
+# mac
+$ brew install memcached
+
+# windows
+$ choco install memcached
+```
+### Running
+```
+memcached -p 11211
 ```
 ## Deployment Checklist
 [Deployment checklist | Django documentation | Django (djangoproject.com)](https://docs.djangoproject.com/en/3.0/howto/deployment/checklist/)
