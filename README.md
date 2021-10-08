@@ -135,6 +135,22 @@
   - [Class-based Implementation](#class-based-implementation)
   - [Middleware usage](#middleware-usage)
   - [Another example](#another-example)
+- [Migrate Manipulations](#migrate-manipulations)
+- [Signal](#signal)
+  - [Creation](#creation)
+  - [Signal types](#signal-types)
+    - [post_save](#post_save)
+    - [pre_save](#pre_save)
+    - [m2m_changed](#m2m_changed)
+    - [Other types](#other-types)
+- [Deployment](#deployment)
+  - [Requirements](#requirements)
+    - [Webserver](#webserver)
+    - [Application Server](#application-server)
+      - [WSGI or ASGI](#wsgi-or-asgi)
+      - [Gunicorn](#gunicorn)
+    - [The Project](#the-project)
+  - [Deployment Checklist](#deployment-checklist)
 - [Further Readings](#further-readings)
 
 # Introduction
@@ -2383,6 +2399,164 @@ class ProfileMiddleware:
 		response = self.get_response(request)
 		return response
 ```
+# Migrate Manipulations
+Assume we want to add ' Sauce' at the end of a model's field. We can do this simply by making a migration file. This will make it simpler to go back in time in case we want to remove that:
+```python
+from django.db import migrations
+from django.db.models import CharField, Value, F
+from django.db.models.functions import Concat, Replace
+
+from app.models import Cake
+
+
+def alter_names_of_sauces(apps, schema_editor):
+    Cake = apps.get_model('app', 'Cake')
+
+    Cake.objects.annotate(
+        new_sauce_name=Concat(
+            F('sauce'), Value(' Sauce'), output_field=CharField()
+        )
+    ).update(sauce=F('new_sauce_name'))
+
+
+def reverse_alter_names_of_sauces(apps, schema_editor):
+    Cake = apps.get_model('app', 'Cake')
+
+    Cake.objects.update(
+        sauce=Replace('sauce', text=Value(' Sauce'), replacement=Value(''))
+    )
+
+
+class Migration(migrations.Migration):
+    dependencies = [
+        ('app', '0001_initial'),
+    ]
+
+    operations = [
+        migrations.RunPython(
+            alter_names_of_sauces,
+            reverse_code=reverse_alter_names_of_sauces
+        ),
+    ]
+```
+# Signal
+## Creation
+To create custom signal you should modify INSTALLED_APPS in settings.py(Change the myapp to myapp.apps.MyappConfig):
+```python
+INSTALLED_APPS = [
+    ...
+    'myapp',  # Delete this line
+    'myapp.apps.MyappConfig',  # Add this line instead
+]
+```
+Then to import the signal, change apps.py:
+```python
+from django.apps import AppConfig
+
+
+class MyappConfig(AppConfig):
+    name = 'myapp'
+
+    def ready(self):
+        import myapp.signals
+```
+Now you can create the signal:
+```python
+from django.dispatch import receiver
+
+
+@receiver(post_save, sender=User, dispatch_uid='unique_str_for_do_something')
+def do_something(...):
+    ...
+```
+## Signal types
+### post_save
+Will run each time after saving object to database(after `save()` function). Structure of this function is like this:
+```python
+def do_something(sender, instance, created, raw, using, update_fields):
+    ...
+```
+You can ignore raw, using and update_fields using kwargs:
+```python
+def do_something(sender, instance, created, **kwargs):
+    ...
+```
+- `sender` argument is the class that created this event.
+- `instance` contains the object.
+- `created` contains bool value that represent if the object is created or edited.
+### pre_save
+It's like `post_save`; The only difference is that it will run before `save()` function. The structure of this function is like this:
+```python
+def do_something(sender, instance, **kwargs):
+    ...
+```
+### m2m_changed
+This signal will send each time the field `ManyToMany` of an instance changed. The structure of this function is like this:
+```python
+@receiver(m2m_changed, sender=model_name.ManyToManyField_name.through)
+def do_something(sender, instance, action, reverse, model, pk_set, using):
+    ...
+```
+You can ignore action, reverse, model, pk_set and using, using kwargs:
+```python
+def do_something(sender, instance, **kwargs):
+    ...
+```
+- `sender` argument is the class that created this event. This class created automatically whenever a `ManyToMany` field is defiend.
+- `instance` contains the object.
+- `action` argument is a string that represent type of update.
+- `reverse` argument contains a bool value that shows from which side it's updated.
+- `model` argument is the class object that included to or removed from relation.
+### Other types
+- **`pre_delete`:** Runs before deleting an object.
+-  **`post_delete`:** Runs after deleting an object.
+-  **`pre_migrate`:** Runs before migration.
+-  **`post_migrate`:** Runs after migration.
+-  **`request_started`:** Runs when request started.
+-  **`request_finished`:** Runs when request finished.
+-  ...
+You can also create your custom signal...
+# Deployment
+## Requirements
+### Webserver
+In case of django, the most famouse one is **Nginx**.
+```python
+upstream django {
+    server 127.0.0.1:8001;
+}
+
+server {
+    listen      80;
+    server_name example.com;
+    charset     utf-8;
+
+    location /static {
+        alias /path/to/your/mysite/static;
+    }
+
+    location / {
+        proxy_pass http://django;
+    }
+}
+```
+### Application Server
+#### WSGI or ASGI
+#### Gunicorn
+To install gunicorn:
+```
+pip install gunicorn
+```
+Simple way of running(Run it where the manage.py is):
+```
+gunicorn myproject.wsgi
+```
+### The Project
+Before running the project, make sure you change the `ALLOWED_HOSTS` in settings.py to all:
+```python
+ALLOWED_HOSTS = ['*']
+```
+## Deployment Checklist
+[Deployment checklist | Django documentation | Django (djangoproject.com)](https://docs.djangoproject.com/en/3.0/howto/deployment/checklist/)
 # Further Readings
 https://docs.djangoproject.com/en/3.2/topics/pagination/
 https://docs.djangoproject.com/en/3.2/ref/contrib/staticfiles/
