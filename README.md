@@ -57,8 +57,10 @@
       - [FormView](#formview)
       - [DeleteView](#deleteview)
     - [Mixin Class](#mixin-class)
+    - [Pagination](#pagination-1)
   - [Templates](#templates)
-    - [Static files(CSS and JS files)](#static-filescss-and-js-files)
+    - [Static Files(CSS and JS files)](#static-filescss-and-js-files)
+      - [More on Static](#more-on-static)
     - [Variables](#variables)
     - [Tags](#tags)
       - [Condition](#condition)
@@ -159,7 +161,6 @@
     - [Installation](#installation-5)
     - [Running](#running)
   - [Deployment Checklist](#deployment-checklist)
-- [Further Readings](#further-readings)
 
 # Introduction
 ## Creating django project
@@ -1180,6 +1181,19 @@ class User(TimestampableMixin, models.Model):
 	signing_date = models.DateTimeField()
 ```
 Or even in views!
+### Pagination
+Give paginator a list of objects, plus the number of items you’d like to have on each page, and it gives you methods for accessing the items for each page:
+```python
+from djago.core.paginator import Paginator
+
+objects = ['john', 'paul', 'george', 'ringo']
+p = Paginator(objects, 2)
+number_of_objects = p.count
+number_of_pages = p.num_pages
+page1 = p.page(1)
+print(page1.object_list)
+print(page2.has_next()) # print(page2.has_previous())
+```
 ## Templates
 Create a folder in your app, called templates. Then you can import html files in it. Now in view, you can use them:
 ```python
@@ -1214,7 +1228,7 @@ class book_detail(TemplateView):
 		context = {'book': book}
 		return render(request, 'book_detail.html', context=context)
 ```
-### Static files(CSS and JS files)
+### Static Files(CSS and JS files)
 make a folder called static in your project folder and add it in Settings file:
 ```python
 STATICFILES_DIRS = [ os.path.join(BASE_DIR, "static"), '/var/project/static/', ]
@@ -1226,6 +1240,26 @@ Now for using it in your templates, add this at the first line:
 Then you can use it like {% static file_relative_address %}:
 ```html
 <link rel="stylesheet" type="text/css" href="{% static 'library/home.css' %}">
+```
+#### More on Static
+**STATIC_ROOT**
+The absolute path to the directory where `collectstatic` will collect static files for deployment.The example in settings.py will be:
+```python
+STATIC_ROOT = "/var/www/example.com/static/"
+```
+**STATIC_URL**
+URL to use when referring to static files located in STATIC_ROOT. The example in settings.py will be:
+```python
+STATIC_URL = '/static/' # or "http://static.example.com/"
+```
+**STATICFILES_DIRS**
+This setting defines the additional locations the staticfiles app will traverse if you use `collectstatic`. The example in settings.py will be:
+```python
+STATICFILES_DIRS = [
+    "/home/special.polls.com/polls/static",
+    "/home/polls.com/polls/static",
+    "/opt/webfiles/common",
+]
 ```
 ### Variables
 dot means different things in templates:
@@ -2707,7 +2741,3 @@ memcached -p 11211
 ```
 ## Deployment Checklist
 [Deployment checklist | Django documentation | Django (djangoproject.com)](https://docs.djangoproject.com/en/3.0/howto/deployment/checklist/)
-# Further Readings
-https://docs.djangoproject.com/en/3.2/topics/pagination/
-https://docs.djangoproject.com/en/3.2/ref/contrib/staticfiles/
-https://docs.djangoproject.com/en/3.2/howto/deployment/
